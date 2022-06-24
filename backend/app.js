@@ -23,6 +23,15 @@ const participantSchema = joi.object({
     name: joi.string().required(),
   });
 
+const messageSchema = joi.object({
+    from: joi.string(),
+    to: joi.string().required(),
+    text: joi.string().required(),
+    type: joi.string().pattern(/^(private_message|message)$/),
+    time: joi.any()
+});
+
+
 server.post("/participants", async (req, res) =>{
     const participant = req.body;
     const validation = participantSchema.validate(participant,{abortEarly: false});
@@ -58,7 +67,44 @@ server.get("/participants", async (req, res) => {
     }
 });
 
-  server.listen(5000, () => {
+server.post("/messages", async (req, res) =>{
+    const message = req.body;
+    message.time = dayjs(Date.now()).format("HH:mm:ss")
+    message.from = req.headers.user;
+    const existingParticipant = await db.collection("participants").findOne({name: req.headers.user})
+    console.log(existingParticipant)
+        if (!existingParticipant) {
+            return res.sendStatus(422);
+          }
+
+    
+
+    const validation = messageSchema.validate(message,{abortEarly: false});
+    if(validation.error){
+        res.status(422).send(validation.error.details.map(item => item.message))
+        return
+    }
+    try {
+        await db.collection("messages").insertOne(message)
+        res.sendStatus(201)
+    } catch(error){
+        console.error(error);
+        res.sendStatus(500)
+    }
+    
+} )
+
+
+server.get("/messages", async (req, res) => {
+    try {
+      const messages = await db.collection("messages").find().toArray();
+      res.send(messages);
+    } catch (err) {
+      console.error(err);
+      res.sendStatus(500);
+    }
+});
+
+server.listen(5000, () => {
     console.log('Server is litening on port 5000.');
-  });
-  
+});
