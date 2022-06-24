@@ -32,10 +32,6 @@ server.post("/participants", async (req, res) =>{
         res.status(422).send(validation.error.details.map(item => item.message))
         return
     }
-
-    
-    
-
     try {
         const existingName = await db.collection("participants").findOne({name: participant.name})
         if (existingName) {
@@ -52,6 +48,15 @@ server.post("/participants", async (req, res) =>{
     
   } )
 
+server.get("/participants", async (req, res) => {
+    try {
+      const participants = await db.collection("participants").find().toArray();
+      res.send(participants);
+    } catch (err) {
+      console.error(err);
+      res.sendStatus(500);
+    }
+});
 
   server.listen(5000, () => {
     console.log('Server is litening on port 5000.');
