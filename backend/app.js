@@ -4,7 +4,7 @@ import express from "express";
 import dayjs from "dayjs";
 import { MongoClient, ObjectId } from 'mongodb';
 import joi from "joi";
-
+import { stripHtml } from "string-strip-html";
 
 
 dotenv.config();
@@ -35,6 +35,7 @@ const messageSchema = joi.object({
 server.post("/participants", async (req, res) =>{
     const participant = req.body;
     const validation = participantSchema.validate(participant,{abortEarly: false});
+    participant.name = stripHtml(participant.name).result
     participant.lastStatus = Date.now()
     const entry = {from: participant.name, to: 'Todos', text: 'entra na sala...', type: 'status', time: dayjs(participant.lastStatus).format("HH:mm:ss")}
     if(validation.error){
@@ -72,7 +73,6 @@ server.post("/messages", async (req, res) =>{
     message.time = dayjs(Date.now()).format("HH:mm:ss")
     message.from = req.headers.user;
     const existingParticipant = await db.collection("participants").findOne({name: req.headers.user})
-    console.log(existingParticipant)
         if (!existingParticipant) {
             return res.sendStatus(422);
           }
@@ -106,7 +106,7 @@ server.get("/messages", async (req, res) => {
             if (message.type === "status"){
                 return true
             }
-            if(message.type === "private_message" && (message.to === user || message.from === user || message.to === "Todos")) {
+            if  (message.type === "private_message" && (message.to === user || message.from === user || message.to === "Todos")) {
                 return true
             }
             if (message.type === "message"){
@@ -114,9 +114,8 @@ server.get("/messages", async (req, res) => {
             }
             return false
         })
-
         if (limit){
-            res.send(teste.slice(0,limit));
+            res.send(teste.slice(Math.max(teste.length - limit, 0)));
         }else{
             res.send(teste)
         }
@@ -154,17 +153,69 @@ setInterval(async function(){
     const participants = await db.collection("participants").find().toArray()
     participants.forEach(async (u) => {
         if (now - u.lastStatus >= 10000){
-            const excludedUser = await db.collection("participants").deleteOne({name: u.name})
+            await db.collection("participants").deleteOne({name: u.name})
             const deleted = {from: u.name, to: 'Todos', text: 'sai da sala...', type: 'status', time: dayjs(now).format("HH:mm:ss")}
             await db.collection("messages").insertOne(deleted)
         }
 
     })
-    
-
-    
 
   }, 15000);
+
+
+server.delete("/messages/:id", async (req, res) => {
+    const id = req.params.id;
+    const user = req.headers.user
+
+    try {
+        const existingMessage =  await db.collection("messages").findOne({ _id: new ObjectId(id) })
+        if (!existingMessage){
+            return res.sendStatus(404);
+        }
+        if(user !== existingMessage.from){
+            return res.sendStatus(401);
+        }
+
+     await db.collection("messages").deleteOne({ _id: new ObjectId(id) })
+     res.sendStatus(200);
+
+    } catch (err) {
+      console.error(err);
+      res.sendStatus(500);
+    }
+});
+
+server.put("/messages/:id", async (req, res) =>{
+    const id = req.params.id;
+    const message = req.body;
+    message.time = dayjs(Date.now()).format("HH:mm:ss")
+    message.from = req.headers.user;
+    
+    const validation = messageSchema.validate(message,{abortEarly: false});
+    console.log(message)
+    if(validation.error){
+        res.status(422).send(validation.error.details.map(item => item.message))
+        return
+    }
+    try {
+        const existingParticipant = await db.collection("participants").findOne({name: req.headers.user})
+
+        if (!existingParticipant) {
+            return res.sendStatus(422);
+          }
+          const existingMessage =  await db.collection("messages").findOne({ _id: new ObjectId(id) })
+          if (!existingMessage){
+              return res.sendStatus(404);
+          }
+
+        await db.collection("messages").updateOne({_id: new ObjectId(id)}, {$set: {to: message.to, text: message.text, type:message.type, time: message.time, from: message.from}})
+        res.sendStatus(201)
+    } catch(error){
+        console.error(error);
+        res.sendStatus(500)
+    }
+    
+} )
 
 server.listen(5000, () => {
     console.log('Server is litening on port 5000.');
