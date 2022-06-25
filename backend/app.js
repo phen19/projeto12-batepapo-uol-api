@@ -35,7 +35,7 @@ const messageSchema = joi.object({
 server.post("/participants", async (req, res) =>{
     const participant = req.body;
     const validation = participantSchema.validate(participant,{abortEarly: false});
-    participant.name = stripHtml(participant.name).result
+    participant.name = stripHtml(participant.name).result.trim()
     participant.lastStatus = Date.now()
     const entry = {from: participant.name, to: 'Todos', text: 'entra na sala...', type: 'status', time: dayjs(participant.lastStatus).format("HH:mm:ss")}
     if(validation.error){
@@ -72,13 +72,12 @@ server.post("/messages", async (req, res) =>{
     const message = req.body;
     message.time = dayjs(Date.now()).format("HH:mm:ss")
     message.from = req.headers.user;
+    message.to = stripHtml(message.to).result;
+    message.text = stripHtml(message.text).result;
     const existingParticipant = await db.collection("participants").findOne({name: req.headers.user})
         if (!existingParticipant) {
             return res.sendStatus(422);
           }
-
-    
-
     const validation = messageSchema.validate(message,{abortEarly: false});
     if(validation.error){
         res.status(422).send(validation.error.details.map(item => item.message))
@@ -93,7 +92,6 @@ server.post("/messages", async (req, res) =>{
     }
     
 } )
-
 
 
 server.get("/messages", async (req, res) => {
@@ -190,6 +188,8 @@ server.put("/messages/:id", async (req, res) =>{
     const message = req.body;
     message.time = dayjs(Date.now()).format("HH:mm:ss")
     message.from = req.headers.user;
+    message.to = stripHtml(message.to).result.trim();
+    message.text = stripHtml(message.text).result.trim();
     
     const validation = messageSchema.validate(message,{abortEarly: false});
     console.log(message)
